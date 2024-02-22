@@ -109,19 +109,42 @@ fisheries <- read_csv("/Users/katebecker/Documents/Bren/Winter/241/FinalExam-241
 
 ```{r , include=TRUE}
 ## Histograms comparing covariates
-
-
-## Remember to include histograms in final product
-
+long_fish <- fisheries %>%
+  pivot_longer(
+    cols = starts_with("MET"),
+    names_to = "met",
+    values_to = "treatment",
+    values_drop_na = TRUE
+  )
 ```
+
+```{r}
+ggplot(long_fish, aes(x = met)) +
+  geom_bar() +
+  scale_x_discrete() +
+  facet_wrap(~treatment) +
+  labs(x = "Marine Ecosystem Type")
+```
+
 
 ## Pretreatment Ecosystem Characteristic Comparison, Mean differences _3 pts)_
 (b) Do a test on mean differences between the treated and control groups for the species richness index (IND_SR) and commercial value (COMM_VAL) variables. Interpret the results (estimated difference and significance) [2 pts] and make a conclusion regarding the similarity between the groups [1pt]. 
 
+
 ```{r , include=TRUE}
 ## Mean Differences (remember to use prop.test or t.test when applicable)
+# use t test since continous var
+
+#COMM_VAL
+t.test(fisheries$COMM_VAL[fisheries$ITQ == 0],
+        fisheries$COMM_VAL[fisheries$ITQ == 1])
+
+#IND_SR
+t.test(fisheries$IND_SR[fisheries$ITQ == 0],
+        fisheries$IND_SR[fisheries$ITQ == 1])
 
 ```
+
 ## Treatment Ignorability _(1 pt)_
 (c) Based on your results from (a) and (b), do you see a problem with just comparing the outcome variable means between treated and untreated fisheries? 
 
@@ -129,23 +152,60 @@ fisheries <- read_csv("/Users/katebecker/Documents/Bren/Winter/241/FinalExam-241
 (d) Estimate the propensity scores (probability of being treated) using a logit model, assume that all covariates are relevant and should be included in the estimation [0.5 pt]. Draw separate histograms (back to back) of the propensity scores for the treated and the untreated group [0.5 pt]. Comment on the overlap, do you have any concerns? Why/why not? [1]
 ```{r , include=TRUE}
 ## Propensity Score Estimates
+xBalance(ITQ ~ MET1 + MET2 + MET3 + MET4 + MET5 + MET6 + IND_SR + COMM_VAL, data = fisheries,
+         report=c("std.diffs","chisquare.test", "p.values"))
+
+fish	<- glm(ITQ ~ MET1 + MET2 + MET3 + MET4 + MET5 + MET6 + IND_SR + COMM_VAL, data = fisheries,	family	= binomial())
+summary(fish)	
+
+fisheries$psvalue	<- predict(fish,	type	= "response")
+
+histbackback(split(fisheries$psvalue,	fisheries$ITQ),	main= 
+  "Propensity	score	before	matching",	xlab=c("control",	"treatment"))
 
 ```
+
+
+
 ## ATT with Nearest Neighbor Matching _(3 pts: 2 pt estimate, 1 pt interpretation)_
 (e) Use the propensity scores from (c) to estimate the Average Treatment Effect on the Treated (ATT) with a nearest neighbor matching estimator. Interpret the result (just the size of the estimate)
 ```{r , include=TRUE}
 ## Nearest Neighbor Matching
+nearest <- matchit(ITQ ~ MET1 + MET2 + MET3 + MET4 + MET5 + MET6 + IND_SR + COMM_VAL, data = fisheries,	method= "nearest",	ratio	= 1)
+summary(nearest)
+match_data	= match.data(nearest)
 
+xBalance((ITQ ~ MET1 + MET2 + MET3 + MET4 + MET5 + MET6 + IND_SR + COMM_VAL, data = match_data,
+         report=c("std.diffs","chisquare.test", "p.values")))
 ## Estimate ATT
 
+
+ATT_data <- match_data %>%
+  group_by(subclass) %>%
+  mutate(diff = COLL_SHARE[ITQ==1]-COLL_SHARE[ITQ==0])
+
+FT = sum(fisheries$ITQ)
+
+sumdiff<-sum(ATT_data$diff)/2
+ATT_m_nn = 1/FT * sumdiff
+ATT_m_nn
 ```
 ## ATE with WLS _(3 pts: 1 pt estimate, 1 pt interpretation)_
 (f) Estimate the Average Treatment Effect (ATE) using the weighted least squares on the full sample. Interpret the estimated size and conclude if it is significantly different from zero from a statistical perspective.
 ```{r , include=TRUE}
 ## WLS Matching
+D = fisheries$ITQ
+PS = fisheries$psvalue
+
+fisheries$wgt = (D/PS + (1-D)/(1-PS))
+
+fish_weight	<-lm(COLL_SHARE	~ ITQ,
+             data = fisheries, weights = wgt)
+summary(fish_weight)
 
 ## Estimate ATE
-
+ATE_fish	<-lm(COLL_SHARE	~ ITQ + MET1 + MET2 + MET3 + MET4 + MET5 + MET6 + IND_SR + COMM_VAL, data = fisheries, weights = wgt)
+summary(ATE_fish)
 ```
 
 
